@@ -3,14 +3,11 @@ use core_affinity::CoreId;
 use std::sync::Barrier;
 use std::sync::atomic::{Ordering, AtomicBool};
 use quanta::Clock;
+use crate::numa::NumaBox;
 
 use super::Count;
 
-pub struct Bench {
-    barrier: CachePadded<Barrier>,
-    owned_by_ping: CachePadded<AtomicBool>,
-    owned_by_pong: CachePadded<AtomicBool>
-}
+pub struct Bench;
 
 impl Bench {
     pub fn new() -> Self {
@@ -32,7 +29,13 @@ impl super::Bench for Bench {
         num_round_trips: Count,
         num_samples: Count,
     ) -> Vec<f64> {
-        let state = self;
+        core_affinity::set_for_current(pong_core);
+
+        let ref barrier = CachePadded<Barrier>::new();
+        let ref owned_by_pong = *NumaBox::new_membind_here(AtomicBool::new(true));
+
+        core_affinity::set_for_current(ping_core);
+        let ref owned_by_ping = *NumaBox::new_membind_here(AtomicBool::new(false));
 
         crossbeam_utils::thread::scope(|s| {
             let pong = s.spawn(move |_| {

@@ -1,5 +1,6 @@
 mod bench;
 mod utils;
+mod numa;
 
 use bench::Count;
 use std::sync::Arc;

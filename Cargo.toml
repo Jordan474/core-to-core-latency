@@ -9,6 +9,9 @@ version = "1.2.0"
 edition = "2021"
 exclude = ["/results"]
 
+[profile.release]
+debuginfo = 2
+
 [dependencies]
 core_affinity = "0.5"
 quanta = "0.10"
@@ -19,3 +22,7 @@ ordered-float = "3"
 cache-padded = "1.2"
 crossbeam-utils = { version = "0.8", default-features = false }
 raw-cpuid = "10"
+libc = "0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "^0.2"
