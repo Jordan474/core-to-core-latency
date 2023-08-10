@@ -6,21 +6,8 @@ use quanta::Clock;
 
 use super::Count;
 
-pub struct Bench {
-    barrier: CachePadded<Barrier>,
-    owned_by_ping: CachePadded<AtomicBool>,
-    owned_by_pong: CachePadded<AtomicBool>
-}
-
-impl Bench {
-    pub fn new() -> Self {
-        Self {
-            barrier: CachePadded::new(Barrier::new(2)),
-            owned_by_ping: Default::default(),
-            owned_by_pong: Default::default(),
-        }
-    }
-}
+#[derive(Default)]
+pub struct Bench;
 
 impl super::Bench for Bench {
     // Thread 1 writes to cache line 1 and read cache line 2
@@ -32,18 +19,23 @@ impl super::Bench for Bench {
         num_round_trips: Count,
         num_samples: Count,
     ) -> Vec<f64> {
-        let state = self;
+        // Mind first-touch binds memory to current numa node
+        core_affinity::set_for_current(pong_core);
+
+        let ref barrier = *Box::new(CachePadded::new(Barrier::new(2)));
+        let ref owned_by_ping = *Box::new(CachePadded::new(AtomicBool::default()));
+        let ref owned_by_pong = *Box::new(CachePadded::new(AtomicBool::default()));
 
         crossbeam_utils::thread::scope(|s| {
             let pong = s.spawn(move |_| {
                 core_affinity::set_for_current(pong_core);
-                state.barrier.wait();
+                barrier.wait();
                 let mut v = false;
                 for _ in 0..(num_round_trips*num_samples) {
                     // Acquire -> Release is important to enforce a causal dependency
                     // This has no effect on x86
-                    while state.owned_by_ping.load(Ordering::Acquire) != v {}
-                    state.owned_by_pong.store(!v, Ordering::Release);
+                    while owned_by_ping.load(Ordering::Acquire) != v {}
+                    owned_by_pong.store(!v, Ordering::Release);
                     v = !v;
                 }
             });
@@ -52,15 +44,15 @@ impl super::Bench for Bench {
                 let mut results = Vec::with_capacity(num_samples as usize);
 
                 core_affinity::set_for_current(ping_core);
-                state.barrier.wait();
+                barrier.wait();
                 let mut v = true;
                 for _ in 0..num_samples {
                     let start = clock.raw();
                     for _ in 0..num_round_trips {
                         // Acquire -> Release is important to enforce a causal dependency
                         // This has no effect on x86
-                        while state.owned_by_pong.load(Ordering::Acquire) != v {}
-                        state.owned_by_ping.store(v, Ordering::Release);
+                        while owned_by_pong.load(Ordering::Acquire) != v {}
+                        owned_by_ping.store(v, Ordering::Release);
                         v = !v;
                     }
                     let end = clock.raw();

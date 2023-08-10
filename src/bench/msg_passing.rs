@@ -7,20 +7,8 @@ use quanta::Clock;
 use super::Count;
 use crate::utils;
 
-pub struct Bench {
-    barrier: Barrier,
-    clocks: Vec<CachePadded<AtomicU64>>,
-}
-
-impl Bench {
-    pub fn new(num_iterations: u32) -> Self {
-        let clocks = (0..num_iterations as usize).map(|_| Default::default()).collect();
-        Self {
-            barrier: Barrier::new(2),
-            clocks,
-        }
-    }
-}
+#[derive(Default)]
+pub struct Bench;
 
 impl super::Bench for Bench {
     // This test is not symmetric. We are doing one-way message passing.
@@ -33,30 +21,36 @@ impl super::Bench for Bench {
         num_iterations: Count,
         num_samples: Count,
     ) -> Vec<f64> {
+        // Mind first-touch binds memory to current numa node
+        core_affinity::set_for_current(recv_core);
+
         let clock_read_overhead_sum = utils::clock_read_overhead_sum(clock, num_iterations);
 
         // A shared time reference
         let start_time = clock.raw();
-        let state = self;
+
+        // Shared states
+        let ref barrier = Barrier::new(2);
+        let ref clocks = (0..num_iterations as usize).map(|_| Default::default()).collect::<Vec<CachePadded<AtomicU64>>>();
 
         crossbeam_utils::thread::scope(|s| {
             let receiver = s.spawn(|_| {
                 core_affinity::set_for_current(recv_core);
                 let mut results = Vec::with_capacity(num_samples as usize);
 
-                state.barrier.wait();
+                barrier.wait();
 
                 for _ in 0..num_samples as usize {
                     let mut latency: u64 = 0;
 
-                    state.barrier.wait();
-                    for v in &state.clocks {
+                    barrier.wait();
+                    for v in clocks {
                         // RDTSC is compensated below
                         let send_time = wait_for_non_zero_value(v, Ordering::Relaxed);
                         let recv_time = clock.raw().saturating_sub(start_time);
                         latency += recv_time.saturating_sub(send_time);
                     }
-                    state.barrier.wait();
+                    barrier.wait();
 
                     let total_latency = clock.delta(0, latency).saturating_sub(clock_read_overhead_sum).as_nanos();
                     results.push(total_latency as f64 / num_iterations as f64);
@@ -68,13 +62,13 @@ impl super::Bench for Bench {
             let sender = s.spawn(|_| {
                 core_affinity::set_for_current(send_core);
 
-                state.barrier.wait();
+                barrier.wait();
 
                 for _ in 0..num_samples as usize {
-                    state.barrier.wait();
-                    for v in &state.clocks {
+                    barrier.wait();
+                    for v in clocks {
                         // Stall a bit to make sure the receiver is ready and we're not getting ahead of ourselves
-                        // We could also put a state.barrier().wait(), but it's unclear whether it's a good
+                        // We could also put a barrier().wait(), but it's unclear whether it's a good
                         // idea due to additional generated traffic.
                         utils::delay_cycles(10000);
 
@@ -83,8 +77,8 @@ impl super::Bench for Bench {
                         v.store(send_time, Ordering::Relaxed);
                     }
 
-                    state.barrier.wait();
-                    for v in &state.clocks {
+                    barrier.wait();
+                    for v in clocks {
                         v.store(0, Ordering::Relaxed);
                     }
                 }

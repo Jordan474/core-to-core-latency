@@ -7,19 +7,8 @@ use super::Count;
 const PING: bool = false;
 const PONG: bool = true;
 
-pub struct Bench {
-    barrier: Barrier,
-    flag: AtomicBool,
-}
-
-impl Bench {
-    pub fn new() -> Self {
-        Self {
-            barrier: Barrier::new(2),
-            flag: AtomicBool::new(PING),
-        }
-    }
-}
+#[derive(Default)]
+pub struct Bench;
 
 impl super::Bench for Bench {
     // The two threads modify the same cacheline.
@@ -31,15 +20,20 @@ impl super::Bench for Bench {
         num_round_trips: Count,
         num_samples: Count,
     ) -> Vec<f64> {
-        let state = self;
+        // Mind first-touch binds memory to current numa node
+        core_affinity::set_for_current(pong_core);
+
+        // Shared states
+        let ref barrier = Barrier::new(2);
+        let ref flag = *Box::new(AtomicBool::new(PING));
 
         crossbeam_utils::thread::scope(|s| {
             let pong = s.spawn(move |_| {
                 core_affinity::set_for_current(pong_core);
 
-                state.barrier.wait();
+                barrier.wait();
                 for _ in 0..(num_round_trips*num_samples) {
-                    while state.flag.compare_exchange(PING, PONG, Ordering::Relaxed, Ordering::Relaxed).is_err() {}
+                    while flag.compare_exchange(PING, PONG, Ordering::Relaxed, Ordering::Relaxed).is_err() {}
                 }
             });
 
@@ -48,12 +42,12 @@ impl super::Bench for Bench {
 
                 let mut results = Vec::with_capacity(num_samples as usize);
 
-                state.barrier.wait();
+                barrier.wait();
 
                 for _ in 0..num_samples {
                     let start = clock.raw();
                     for _ in 0..num_round_trips {
-                        while state.flag.compare_exchange(PONG, PING, Ordering::Relaxed, Ordering::Relaxed).is_err() {}
+                        while flag.compare_exchange(PONG, PING, Ordering::Relaxed, Ordering::Relaxed).is_err() {}
                     }
                     let end = clock.raw();
                     let duration = clock.delta(start, end).as_nanos();

@@ -6,9 +6,13 @@ use std::sync::Arc;
 use clap::Parser;
 use quanta::Clock;
 use crate::bench::run_bench;
+use mmap_allocator::MmapAllocator;
 
 const DEFAULT_NUM_SAMPLES: Count = 300;
 const DEFAULT_NUM_ITERATIONS_PER_SAMPLE: Count = 1000;
+
+#[global_allocator]
+static GLOBAL: MmapAllocator = MmapAllocator;
 
 #[derive(Clone)]
 #[derive(clap::Parser)]
@@ -66,20 +70,20 @@ fn main() {
                 eprintln!();
                 eprintln!("1) CAS latency on a single shared cache line");
                 eprintln!();
-                run_bench(&cores, &clock, &args, bench::cas::Bench::new());
+                run_bench(&cores, &clock, &args, bench::cas::Bench::default());
             }
             2 => {
                 eprintln!();
                 eprintln!("2) Single-writer single-reader latency on two shared cache lines");
                 eprintln!();
-                run_bench(&cores, &clock, &args, bench::read_write::Bench::new());
+                run_bench(&cores, &clock, &args, bench::read_write::Bench::default());
             }
             3 => {
                 utils::assert_rdtsc_usable(&clock);
                 eprintln!();
                 eprintln!("3) Message passing. One writer and one reader on many cache line");
                 eprintln!();
-                run_bench(&cores, &clock, &args, bench::msg_passing::Bench::new(args.num_iterations));
+                run_bench(&cores, &clock, &args, bench::msg_passing::Bench::default());
             }
             _ => panic!("--bench should be 1, 2 or 3"),
         }
