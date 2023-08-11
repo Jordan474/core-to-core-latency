@@ -9,6 +9,7 @@ use std::io::Write;
 use ndarray::{s, Axis};
 use ordered_float::NotNan;
 use crate::CliArgs;
+use crate::numa::move_to_numa_node;
 
 pub type Count = u32;
 
@@ -18,7 +19,7 @@ pub trait Bench {
     fn is_symmetric(&self) -> bool { true }
 }
 
-pub fn run_bench(cores: &[CoreId], clock: &Clock, args: &CliArgs, bench: impl Bench) {
+pub fn run_bench(cores: &[CoreId], clock: &Clock, args: &CliArgs, bench: &impl Bench) {
     let num_samples = args.num_samples;
     let num_iterations = args.num_iterations;
 
@@ -44,6 +45,11 @@ pub fn run_bench(cores: &[CoreId], clock: &Clock, args: &CliArgs, bench: impl Be
     // Do the benchmark
     for i in 0..n_cores {
         let core_i = cores[i];
+
+        // Move execution to first core, and move bench state memory too
+        core_affinity::set_for_current(core_i);
+        move_to_numa_node(bench);
+
         eprint!("    {: >3}", core_i.id);
         for j in 0..n_cores {
             if bench.is_symmetric() {

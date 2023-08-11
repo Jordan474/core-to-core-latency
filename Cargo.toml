@@ -20,3 +20,6 @@ cache-padded = "1.2"
 crossbeam-utils = { version = "0.8", default-features = false }
 raw-cpuid = "10"
 mmap-allocator = "0.3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "^0.2"
