@@ -18,7 +18,8 @@ pub trait Bench {
     fn is_symmetric(&self) -> bool { true }
 }
 
-pub fn run_bench(cores: &[CoreId], clock: &Clock, args: &CliArgs, bench: impl Bench) {
+pub fn run_bench<B: Bench, F: Fn() -> B>(cores: &[CoreId], clock: &Clock, args: &CliArgs, new_bench: F)
+{
     let num_samples = args.num_samples;
     let num_iterations = args.num_iterations;
 
@@ -45,6 +46,10 @@ pub fn run_bench(cores: &[CoreId], clock: &Clock, args: &CliArgs, bench: impl Be
     for i in 0..n_cores {
         let core_i = cores[i];
         eprint!("    {: >3}", core_i.id);
+        // Fix numa effects: set current core, and create a new bench so memory
+        // is affected to current numa node (thanks to global numa allocator).
+        core_affinity::set_for_current(core_i);
+        let bench = &*Box::new(new_bench());
         for j in 0..n_cores {
             if bench.is_symmetric() {
                 if i <= j {

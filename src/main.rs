@@ -70,20 +70,20 @@ fn main() {
                 eprintln!();
                 eprintln!("1) CAS latency on a single shared cache line");
                 eprintln!();
-                run_bench(&cores, &clock, &args, bench::cas::Bench::new());
+                run_bench(&cores, &clock, &args, bench::cas::Bench::new);
             }
             2 => {
                 eprintln!();
                 eprintln!("2) Single-writer single-reader latency on two shared cache lines");
                 eprintln!();
-                run_bench(&cores, &clock, &args, bench::read_write::Bench::new());
+                run_bench(&cores, &clock, &args, bench::read_write::Bench::new);
             }
             3 => {
                 utils::assert_rdtsc_usable(&clock);
                 eprintln!();
                 eprintln!("3) Message passing. One writer and one reader on many cache line");
                 eprintln!();
-                run_bench(&cores, &clock, &args, bench::msg_passing::Bench::new(args.num_iterations));
+                run_bench(&cores, &clock, &args, || bench::msg_passing::Bench::new(args.num_iterations));
             }
             _ => panic!("--bench should be 1, 2 or 3"),
         }
