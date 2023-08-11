@@ -6,9 +6,13 @@ use std::sync::Arc;
 use clap::Parser;
 use quanta::Clock;
 use crate::bench::run_bench;
+use mmap_allocator::MmapAllocator;
 
 const DEFAULT_NUM_SAMPLES: Count = 300;
 const DEFAULT_NUM_ITERATIONS_PER_SAMPLE: Count = 1000;
+
+#[global_allocator]
+static GLOBAL: MmapAllocator = MmapAllocator;
 
 #[derive(Clone)]
 #[derive(clap::Parser)]
